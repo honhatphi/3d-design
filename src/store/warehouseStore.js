@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { Pathfinder } from '../utils/pathfinder';
 import { gridToWorld, worldToGrid } from '../utils/gridHelpers';
+import { SHUTTLE_ZONES } from '../utils/constants';
 
 const pathfinder = new Pathfinder();
 
@@ -32,6 +33,7 @@ export const useWarehouseStore = create((set, get) => ({
       target: null, // Current world target [x, y, z]
       path: [], // Queue of grid steps {x, y}
       onLift: null, // null | 'LIFT_LOWER' | 'LIFT_UPPER' - which lift shuttle is on
+      ...SHUTTLE_ZONES.SHUTTLE_1, // Zone constraints from constants
     },
     SHUTTLE_2: {
       id: 'SHUTTLE_2',
@@ -45,6 +47,7 @@ export const useWarehouseStore = create((set, get) => ({
       target: null,
       path: [],
       onLift: null,
+      ...SHUTTLE_ZONES.SHUTTLE_2, // Zone constraints from constants
     }
   },
 
@@ -259,6 +262,154 @@ export const useWarehouseStore = create((set, get) => ({
     });
   },
 
+  /**
+   * Task 1.2: Validate Mode Constraint
+   * Ensures shuttle movement respects AISLE/RAIL mode rules
+   * @throws Error if constraint is violated
+   */
+  validateModeConstraint: (mode, fromX, fromY, toX, toY) => {
+    if (mode === 'AISLE') {
+      if (fromY !== toY) {
+        throw new Error(`[Mode Violation] AISLE mode: Cannot change Y (Rail). Attempted: Y ${fromY} → ${toY}`);
+      }
+    }
+    if (mode === 'RAIL') {
+      if (fromX !== toX) {
+        throw new Error(`[Mode Violation] RAIL mode: Cannot change X (Depth). Attempted: X ${fromX} → ${toX}`);
+      }
+    }
+    return true;
+  },
+
+  /**
+   * Task 1.3: Generate Movement Sequence (3-Phase Logic)
+   * Implements ESCAPE → TRAVEL → APPROACH pattern from logic.md
+   *
+   * @param {number} fromX - Current X (Depth)
+   * @param {number} fromY - Current Y (Rail)
+   * @param {number} toX - Target X (Depth)
+   * @param {number} toY - Target Y (Rail)
+   * @param {string} shuttleId - Shuttle identifier
+   * @returns {Array} Array of movement steps with phase labels
+   */
+  generateEscapeTravelApproach: (fromX, fromY, toX, toY, shuttleId) => {
+    const { shuttles } = get();
+    const shuttle = shuttles[shuttleId];
+    const steps = [];
+    const highway = shuttle.highway; // 4 for Shuttle 1, 20 for Shuttle 2
+    const highwayX = 4; // Vertical highway
+
+    console.log(`\n[3-Phase Movement] ${shuttleId}: (${fromX},${fromY}) → (${toX},${toY})`);
+    console.log(`  Highway: Y=${highway}`);
+
+    let currentX = fromX;
+    let currentY = fromY;
+
+    // PHASE 1: ESCAPE - Exit to Highway (if not already on highway and movement needed)
+    if (currentY !== highway && (currentX !== toX || currentY !== toY)) {
+      console.log(`  ✈️ ESCAPE: (${currentX},${currentY}) → (${currentX},${highway}) [RAIL mode]`);
+      steps.push({
+        phase: 'ESCAPE',
+        mode: 'RAIL',
+        fromX: currentX,
+        fromY: currentY,
+        toX: currentX,
+        toY: highway,
+        description: `Exit to highway Y=${highway}`
+      });
+      currentY = highway;
+    }
+
+    // PHASE 2: TRAVEL - Move along Highway (if depth change needed)
+    if (currentX !== toX) {
+      console.log(`  🚗 TRAVEL: (${currentX},${currentY}) → (${toX},${currentY}) [AISLE mode]`);
+      steps.push({
+        phase: 'TRAVEL',
+        mode: 'AISLE',
+        fromX: currentX,
+        fromY: currentY,
+        toX: toX,
+        toY: currentY,
+        description: `Travel on highway from X=${currentX} to X=${toX}`
+      });
+      currentX = toX;
+    }
+
+    // PHASE 3: APPROACH - Enter to Target (if not already there)
+    if (currentY !== toY) {
+      console.log(`  🎯 APPROACH: (${currentX},${currentY}) → (${currentX},${toY}) [RAIL mode]`);
+      steps.push({
+        phase: 'APPROACH',
+        mode: 'RAIL',
+        fromX: currentX,
+        fromY: currentY,
+        toX: currentX,
+        toY: toY,
+        description: `Enter target at Y=${toY}`
+      });
+      currentY = toY;
+    }
+
+    // Validate all steps
+    steps.forEach((step, idx) => {
+      try {
+        get().validateModeConstraint(step.mode, step.fromX, step.fromY, step.toX, step.toY);
+      } catch (error) {
+        console.error(`[Validation Failed] Step ${idx + 1} (${step.phase}):`, error.message);
+        throw error;
+      }
+    });
+
+    console.log(`  ✅ Generated ${steps.length} valid movement steps\n`);
+
+    // Convert metadata steps to actual sequence commands
+    const sequence = [];
+    steps.forEach(step => {
+      sequence.push({ type: 'SHUTTLE_MODE', mode: step.mode, shuttleId });
+      sequence.push({ type: 'SHUTTLE_MOVE', target: [step.toX, step.toY], shuttleId });
+    });
+
+    return sequence;
+  },
+
+  /**
+   * Task 2.1: Navigate To Lift
+   * Generate movement sequence from current position to assigned lift
+   * @param {string} shuttleId - Shuttle identifier
+   * @param {number} currentX - Current X position
+   * @param {number} currentY - Current Y position
+   * @returns {Array} Movement steps to reach lift
+   */
+  navigateToLift: (shuttleId, currentX, currentY) => {
+    const { shuttles } = get();
+    const shuttle = shuttles[shuttleId];
+    const liftX = shuttle.liftX; // 2
+    const liftY = shuttle.liftY; // 5 for SHUTTLE_1, 19 for SHUTTLE_2
+
+    console.log(`[Navigate To Lift] ${shuttleId}: (${currentX},${currentY}) → Lift at (${liftX},${liftY})`);
+
+    return get().generateEscapeTravelApproach(currentX, currentY, liftX, liftY, shuttleId);
+  },
+
+  /**
+   * Task 2.2: Navigate From Lift
+   * Generate movement sequence from lift to target position
+   * @param {string} shuttleId - Shuttle identifier
+   * @param {number} targetX - Target X position
+   * @param {number} targetY - Target Y position
+   * @returns {Array} Movement steps from lift to target
+   */
+  navigateFromLift: (shuttleId, targetX, targetY) => {
+    const { shuttles } = get();
+    const shuttle = shuttles[shuttleId];
+    const liftX = shuttle.liftX; // 2
+    const liftY = shuttle.liftY; // 5 for SHUTTLE_1, 19 for SHUTTLE_2
+
+    console.log(`[Navigate From Lift] ${shuttleId}: Lift at (${liftX},${liftY}) → (${targetX},${targetY})`);
+
+    return get().generateEscapeTravelApproach(liftX, liftY, targetX, targetY, shuttleId);
+  },
+
   // --- INBOUND LOGIC ---
 
   // Helper: Find nearest horizontal highway for a given Y position
@@ -279,62 +430,33 @@ export const useWarehouseStore = create((set, get) => ({
   },
 
   /**
-   * Helper: Find exit point from rack to highway
-   * If shuttle is inside a rack (X > 4), it must exit to X=4 first (vertical highway)
-   * then move along highway
-   */
-  findRackExitPoint: (currentX, currentY) => {
-    const verticalHighway = 4;
-    const horizontalHighways = [4, 12, 20];
-
-    // Check if already on vertical highway
-    if (currentX === verticalHighway) {
-      return null; // Already on highway, no exit needed
-    }
-
-    // Check if already on horizontal highway
-    if (horizontalHighways.includes(currentY)) {
-      return null; // Already on highway, no exit needed
-    }
-
-    // If in rack area (X > 4), must exit to vertical highway X=4 at current Y
-    // But current Y might not be a valid highway, so exit to nearest highway first
-    if (currentX > verticalHighway) {
-      const nearestHwy = get().findNearestHorizontalHighway(currentY);
-      return { x: verticalHighway, y: nearestHwy };
-    }
-
-    // If at X=1,2,3 (depth area), move to vertical highway
-    const nearestHwy = get().findNearestHorizontalHighway(currentY);
-    return { x: verticalHighway, y: nearestHwy };
-  },
-
-  /**
-   * Process Inbound Request - Multi-level Support
-   * 1. Find empty cell in specific row and level
-   * 2. Generate command sequence (with lift if needed)
-   * 3. Execute sequence
+   * Process Inbound Request (Refactored for logic.md compliance)
+   *
+   * Flow:
+   * 1. Find deepest empty slot in target row/level
+   * 2. Retrieve shuttle to Level 1 if needed (navigate to lift → board → down → disembark)
+   * 3. Spawn pallet on conveyor and move to lift position
+   * 4. Shuttle picks pallet from lift position
+   * 5. If target level > 1: board lift → go up → disembark
+   * 6. Navigate to target position using 3-phase movement
+   * 7. Drop pallet
+   * 8. Exit to highway
    */
   processInboundRequest: (targetRow = 6, targetLevel = 1) => {
     const state = get();
     const { inventory, shuttles } = state;
 
-    // Determine which shuttle/lift to use based on targetRow
-    // Lower Block (Rows 1-12) -> SHUTTLE_1 / LIFT_LOWER
-    // Upper Block (Rows 13-23) -> SHUTTLE_2 / LIFT_UPPER
     const isUpperBlock = targetRow > 12;
     const shuttleId = isUpperBlock ? 'SHUTTLE_2' : 'SHUTTLE_1';
     const liftId = isUpperBlock ? 'LIFT_UPPER' : 'LIFT_LOWER';
-    const liftRow = isUpperBlock ? 19 : 5;
-
     const shuttle = shuttles[shuttleId];
+    const { liftX, liftY, highway } = shuttle;
 
-    // 1. Find Target Cell (Deepest Empty in row at specified level)
+    // 1. Find Target Cell (Deepest Empty)
     let targetX = null;
     const startX = 5;
     const endX = 25;
 
-    // Find deepest empty slot at target level
     for (let x = endX; x >= startX; x--) {
       if (!inventory[`${x},${targetRow},${targetLevel}`]) {
         targetX = x;
@@ -343,233 +465,190 @@ export const useWarehouseStore = create((set, get) => ({
     }
 
     if (!targetX) {
-      console.warn(`Row ${targetRow}, Level ${targetLevel} is full!`);
+      get().addLog(`⚠️ Row ${targetRow} Level ${targetLevel} is full!`, 'error');
       return;
     }
 
-    console.log(`Inbound Target: Grid(${targetX}, ${targetRow}, ${targetLevel}) using ${shuttleId}`);
-    get().addLog(`🎯 Target: Rail ${targetRow}, Depth ${targetX}, Level ${targetLevel} (${shuttleId})`, 'start');
+    console.log(`[INBOUND] Target: X=${targetX}, Y=${targetRow}, Level=${targetLevel} using ${shuttleId}`);
+    get().addLog(`📥 Inbound: Rail ${targetRow}, Depth ${targetX}, Level ${targetLevel}`, 'start');
 
-    // 2. Setup
-    const liftX = 2;
-    const highwayX = 4;
-    // Highway Y depends on block? No, highway is continuous.
-    // But we should use the highway Y closest to the lift.
-    // LIFT_LOWER (Row 5) -> Highway Y=4
-    // LIFT_UPPER (Row 19) -> Highway Y=20
-    const highwayY = isUpperBlock ? 20 : 4;
-
+    const sequence = [];
+    const currentLevel = shuttle.gridPosition.level || 1;
     const currentX = shuttle.gridPosition.x;
     const currentY = shuttle.gridPosition.y;
-    const currentLevel = shuttle.gridPosition.level || 1;
-    const sequence = [];
     const palletId = `INBOUND-${Date.now()}`;
 
-    // === PHASE 1: SHUTTLE RETRIEVAL (If needed) ===
-    // Ensure shuttle is at Level 1 Lift Position before starting conveyor
-
-    // Step 1: Navigate to Lift (at current level)
-    const nearestHwy = get().findNearestHorizontalHighway(currentY);
-    if (currentX !== highwayX) {
-      if (currentY !== nearestHwy) {
-        sequence.push(
-          { type: 'SHUTTLE_MODE', mode: 'RAIL', shuttleId },
-          { type: 'SHUTTLE_MOVE', target: [currentX, nearestHwy], shuttleId }
-        );
-      }
-      sequence.push(
-        { type: 'SHUTTLE_MODE', mode: 'AISLE', shuttleId },
-        { type: 'SHUTTLE_MOVE', target: [highwayX, nearestHwy], shuttleId }
-      );
-    }
-
-    if (nearestHwy !== highwayY) {
-      sequence.push(
-        { type: 'SHUTTLE_MODE', mode: 'RAIL', shuttleId },
-        { type: 'SHUTTLE_MOVE', target: [highwayX, highwayY], shuttleId }
-      );
-    }
-
-    // Move to Depth 2, Rail 4/20 (Waiting Position)
-    sequence.push(
-      { type: 'SHUTTLE_MODE', mode: 'AISLE', shuttleId },
-      { type: 'SHUTTLE_MOVE', target: [liftX, highwayY], shuttleId },
-      { type: 'SHUTTLE_MODE', mode: 'RAIL', shuttleId }
-    );
-
-    // Step 2: Handle Level Change if not at Level 1
+    // === STAGE 1: RETRIEVE SHUTTLE TO LEVEL 1 (if not already there) ===
     if (currentLevel > 1) {
-      // Move Lift to Shuttle Level BEFORE entering lift cell
+      console.log(`[INBOUND] Retrieving shuttle from Level ${currentLevel} to Level 1`);
+
+      // Navigate to lift using helper
+      const liftNavSequence = get().navigateToLift(shuttleId, currentX, currentY);
+      sequence.push(...liftNavSequence);
+
+      // Move lift to shuttle's level first (safety)
       sequence.push({ type: 'LIFT_MOVE', id: liftId, level: currentLevel });
 
-      // Now safe to enter lift cell
-      sequence.push({ type: 'SHUTTLE_MOVE', target: [liftX, liftRow], shuttleId });
-
-      // Shuttle Boards Lift
+      // Board lift
       sequence.push({ type: 'SHUTTLE_BOARD', id: liftId, shuttleId });
 
-      // Lift Moves Down to Level 1
+      // Move down to Level 1
       sequence.push({ type: 'LIFT_MOVE', id: liftId, level: 1 });
       get().addLog(`⬇️ Retrieving ${shuttleId} to Level 1`, 'action');
+
+      // Disembark
+      sequence.push({ type: 'SHUTTLE_BOARD', id: null, shuttleId });
+
+      console.log(`[INBOUND] Shuttle now at Level 1, position (${liftX}, ${liftY})`);
     } else {
-      // Already at Level 1, ensure lift is here too (should be, but good to be safe)
+      // Already at Level 1, navigate to lift position
+      console.log(`[INBOUND] Already at Level 1, moving to lift position`);
+
+      try {
+        const liftNavSequence = get().navigateToLift(shuttleId, currentX, currentY);
+        sequence.push(...liftNavSequence);
+      } catch (error) {
+        get().addLog(`❌ Navigation error: ${error.message}`, 'error');
+        return;
+      }
+
+      // Ensure lift is at Level 1
       sequence.push({ type: 'LIFT_MOVE', id: liftId, level: 1 });
 
-      // Enter lift cell
-      sequence.push({ type: 'SHUTTLE_MOVE', target: [liftX, liftRow], shuttleId });
-
-      // Board
+      // Board lift (to wait for pallet)
       sequence.push({ type: 'SHUTTLE_BOARD', id: liftId, shuttleId });
     }
 
-    // === PHASE 2: CONVEYOR FEED ===
-    // Now that shuttle is ready at Level 1, start conveyor
+    // === STAGE 2: CONVEYOR FEED ===
     // Conveyor Y depends on block
-    // Lower: Row 6 feeds to Row 5
-    // Upper: Row 18 feeds to Row 19
     const conveyorY = isUpperBlock ? 18 : 6;
+
+    console.log(`[INBOUND] Spawning pallet on conveyor at Y=${conveyorY}`);
 
     sequence.push({
       type: 'SPAWN_CONVEYOR_PALLET',
       id: palletId,
-      x: 0,  // Start at leftmost conveyor
+      x: 0,
       y: conveyorY,
       level: 1
     });
 
-    // Wait for pallet to appear
     sequence.push({ type: 'WAIT', duration: 500, message: 'Pallet spawning...' });
 
-    // Move pallet along conveyor segments
+    // Move pallet along conveyor to lift
     sequence.push(
       { type: 'MOVE_CONVEYOR_PALLET', id: palletId, x: 1, y: conveyorY },
       { type: 'MOVE_CONVEYOR_PALLET', id: palletId, x: 2, y: conveyorY },
-      { type: 'MOVE_CONVEYOR_PALLET', id: palletId, x: 2, y: liftRow }
+      { type: 'MOVE_CONVEYOR_PALLET', id: palletId, x: 2, y: liftY }
     );
 
-    // Transfer pallet to lift inventory
+    // Transfer to inventory at lift position
     sequence.push({
       type: 'CONVEYOR_TO_INVENTORY',
       id: palletId,
       x: liftX,
-      y: liftRow,
+      y: liftY,
       level: 1
     });
 
-    // === SYNC POINT: Wait for pallet to be at lift ===
-    // Check if pallet is already in inventory at lift position
+    // Wait for pallet to arrive
     sequence.push({
       type: 'WAIT_FOR_PALLET',
       x: liftX,
-      y: liftRow,
+      y: liftY,
       level: 1,
-      maxWait: 10000 // Max 10 seconds
+      maxWait: 10000
     });
 
-    // Step 6: Pick pallet - shuttle already at lift position (on lift)
-    // Lift up and wait for animation to complete
-    // MODIFIED: Don't lift yet! Just grab the data.
-    // sequence.push({ type: 'SHUTTLE_LIFT', lift: true, onLift: liftId, shuttleId });
-    // sequence.push({ type: 'WAIT', duration: 500, message: 'Lifting animation...' });
+    // === STAGE 3: PICK PALLET ===
+    console.log(`[INBOUND] Picking pallet from lift position`);
 
-    // Now remove pallet after lift animation finished
-    sequence.push({ type: 'REMOVE_INVENTORY', x: liftX, y: liftRow, level: 1, shuttleId });
+    // Remove from inventory (shuttle grabs it)
+    sequence.push({ type: 'REMOVE_INVENTORY', x: liftX, y: liftY, level: 1, shuttleId });
 
-    // Ensure deck is DOWN while moving
+    // Keep deck down while moving
     sequence.push({ type: 'SHUTTLE_LIFT', lift: false, onLift: liftId, shuttleId });
 
-    // === MULTI-LEVEL LOGIC ===
+    // === STAGE 4: LEVEL UP (if needed) ===
     if (targetLevel > 1) {
-      // Shuttle stays on lift with pallet - lift will move both up
+      console.log(`[INBOUND] Moving to Level ${targetLevel}`);
 
-      // Step 6a: Lift moves to target level (with shuttle on it)
-      sequence.push({
-        type: 'LIFT_MOVE',
-        id: liftId,
-        level: targetLevel
-      });
+      // Shuttle stays on lift, lift moves up with shuttle
+      sequence.push({ type: 'LIFT_MOVE', id: liftId, level: targetLevel });
       get().addLog(`🔼 Lift to Level ${targetLevel} (with shuttle)`, 'action');
 
-      // Step 6b: Wait for lift to reach target level
-      // Shuttle is still on the lift, still carrying pallet
       sequence.push({ type: 'WAIT', duration: 2000, message: 'Lift moving...' });
 
-      // NOW Lift the pallet before exiting
+      // Lift pallet before exiting
       sequence.push({ type: 'SHUTTLE_LIFT', lift: true, onLift: liftId, shuttleId });
       sequence.push({ type: 'WAIT', duration: 500, message: 'Lifting animation...' });
 
-      // Disembark to allow movement
+      // Disembark
       sequence.push({ type: 'SHUTTLE_BOARD', id: null, shuttleId });
-
     } else {
-      // If staying at Level 1, lift now before exiting
+      // Staying at Level 1
+      console.log(`[INBOUND] Staying at Level 1`);
+
+      // Lift pallet
       sequence.push({ type: 'SHUTTLE_LIFT', lift: true, onLift: liftId, shuttleId });
       sequence.push({ type: 'WAIT', duration: 500, message: 'Lifting animation...' });
 
-      // If staying at Level 1, we need to explicitly disembark before moving
-      // (LIFT_MOVE handles disembark automatically, but we skipped it)
+      // Disembark
       sequence.push({ type: 'SHUTTLE_BOARD', id: null, shuttleId });
     }
 
-    // Step 7: Exit lift to vertical highway (at correct level now)
-    sequence.push(
-      { type: 'SHUTTLE_MOVE', target: [liftX, highwayY], shuttleId },
-      { type: 'SHUTTLE_MODE', mode: 'AISLE', shuttleId },
-      { type: 'SHUTTLE_MOVE', target: [highwayX, highwayY], shuttleId }
-    );
+    // === STAGE 5: NAVIGATE TO TARGET ===
+    console.log(`[INBOUND] Navigating from lift (${liftX}, ${liftY}) to target (${targetX}, ${targetRow})`);
 
-    // Step 8: Navigate directly to target row's horizontal highway
-    const targetRowHighway = get().findNearestHorizontalHighway(targetRow);
-    if (highwayY !== targetRowHighway) {
-      sequence.push(
-        { type: 'SHUTTLE_MODE', mode: 'RAIL', shuttleId },
-        { type: 'SHUTTLE_MOVE', target: [highwayX, targetRowHighway], shuttleId }
-      );
+    try {
+      const targetNavSequence = get().navigateFromLift(shuttleId, targetX, targetRow);
+      sequence.push(...targetNavSequence);
+    } catch (error) {
+      get().addLog(`❌ Navigation error: ${error.message}`, 'error');
+      return;
     }
 
-    // Step 9: Move along horizontal highway to target column
-    sequence.push(
-      { type: 'SHUTTLE_MODE', mode: 'AISLE', shuttleId },
-      { type: 'SHUTTLE_MOVE', target: [targetX, targetRowHighway], shuttleId }
-    );
+    // === STAGE 6: DROP PALLET ===
+    console.log(`[INBOUND] Dropping pallet at (${targetX}, ${targetRow}, ${targetLevel})`);
 
-    // Step 10: Enter rack depth from highway
-    if (targetRow !== targetRowHighway) {
-      sequence.push(
-        { type: 'SHUTTLE_MODE', mode: 'RAIL', shuttleId },
-        { type: 'SHUTTLE_MOVE', target: [targetX, targetRow], shuttleId }
-      );
-    }
-
-    // Step 11: Drop pallet with smooth animation
-    // Lower platform and wait for animation
     sequence.push({ type: 'SHUTTLE_LIFT', lift: false, shuttleId });
     sequence.push({ type: 'WAIT', duration: 500, message: 'Dropping animation...' });
-
-    // Add to inventory after drop animation finished (at correct level)
     sequence.push({ type: 'ADD_INVENTORY', x: targetX, y: targetRow, level: targetLevel, shuttleId });
 
-    // Step 12: Exit rack back to horizontal highway
-    if (targetRow !== targetRowHighway) {
-      sequence.push(
-        { type: 'SHUTTLE_MODE', mode: 'RAIL', shuttleId },
-        { type: 'SHUTTLE_MOVE', target: [targetX, targetRowHighway], shuttleId }
+    // === STAGE 7: EXIT TO HIGHWAY ===
+    console.log(`[INBOUND] Returning to highway Y=${highway} at current depth X=${targetX}`);
+
+    try {
+      // Exit from target back to highway at same depth (targetX, highway)
+      const exitSequence = get().generateEscapeTravelApproach(
+        targetX, targetRow,
+        targetX, highway,  // Keep X, return to highway Y
+        shuttleId
       );
+      sequence.push(...exitSequence);
+    } catch (error) {
+      get().addLog(`❌ Exit navigation error: ${error.message}`, 'error');
+      // Don't return, pallet already dropped
     }
 
-    // Done - shuttle stays at (targetX, targetRowHighway) on horizontal highway
-    // No need to return to X=4, Step 1 can handle starting from any highway position
     sequence.push({ type: 'LOG', message: 'Inbound Complete!' });
 
-    // Execute
+    // Execute sequence
     get().executeSequence(sequence, shuttleId);
   },
 
   /**
-   * Process Outbound Request
-   * 1. Find pallet in row
-   * 2. Retrieve pallet
-   * 3. Bring to output (Lift/Conveyor)
+   * Process Outbound Request (Refactored for logic.md compliance)
+   *
+   * Flow:
+   * 1. Find pallet in target row/level (closest to aisle, X=5)
+   * 2. If level change needed: navigate to lift → board → move → disembark
+   * 3. Navigate to pallet using 3-phase ESCAPE→TRAVEL→APPROACH
+   * 4. Pick pallet (lift + remove from inventory)
+   * 5. Navigate to lift using 3-phase movement
+   * 6. If level > 1: board lift → go to level 1 → disembark
+   * 7. Drop pallet at lift output
+   * 8. Move away to highway position
    */
   processOutboundRequest: (targetRow = 6, targetLevel = 1) => {
     const state = get();
@@ -578,10 +657,10 @@ export const useWarehouseStore = create((set, get) => ({
     const isUpperBlock = targetRow > 12;
     const shuttleId = isUpperBlock ? 'SHUTTLE_2' : 'SHUTTLE_1';
     const liftId = isUpperBlock ? 'LIFT_UPPER' : 'LIFT_LOWER';
-    const liftRow = isUpperBlock ? 19 : 5;
     const shuttle = shuttles[shuttleId];
+    const { liftX, liftY, highway } = shuttle;
 
-    // 1. Find Pallet (Closest to aisle)
+    // 1. Find Pallet (Closest to aisle = smallest X)
     let targetX = null;
     const startX = 5;
     const endX = 25;
@@ -601,90 +680,130 @@ export const useWarehouseStore = create((set, get) => ({
     get().addLog(`📤 Outbound: Rail ${targetRow}, Depth ${targetX}, Level ${targetLevel}`, 'start');
 
     const sequence = [];
-    const liftX = 2;
-    const highwayX = 4;
-    const highwayY = isUpperBlock ? 20 : 4;
-    const liftRowY = isUpperBlock ? 19 : 5;
     const currentLevel = shuttle.gridPosition.level || 1;
     const currentX = shuttle.gridPosition.x;
     const currentY = shuttle.gridPosition.y;
 
-    console.log(`[OUTBOUND] Shuttle ${shuttleId} current position: X=${currentX}, Y=${currentY}, Level=${currentLevel}`);
-    console.log(`[OUTBOUND] Target pallet position: X=${targetX}, Y=${targetRow}, Level=${targetLevel}`);
-    console.log(`[OUTBOUND] Need level change: ${currentLevel !== targetLevel}`);
+    console.log(`[OUTBOUND] Shuttle ${shuttleId} at X=${currentX}, Y=${currentY}, Level=${currentLevel}`);
+    console.log(`[OUTBOUND] Target pallet at X=${targetX}, Y=${targetRow}, Level=${targetLevel}`);
 
-    // === PHASE 1: GO TO PALLET ===
-
-    // 1. Move to correct level if needed
+    // === STAGE 1: LEVEL CHANGE (if needed) ===
     if (currentLevel !== targetLevel) {
-       // Navigate to lift using pathfinder
-       sequence.push({ type: 'NAVIGATE_TO', targetX: liftX, targetY: liftRowY, shuttleId });
+      console.log(`[OUTBOUND] Level change required: ${currentLevel} → ${targetLevel}`);
 
-       // Board Lift
-       sequence.push({ type: 'SHUTTLE_BOARD', id: liftId, shuttleId });
+      // Navigate to lift using helper (handles 3-phase movement)
+      const liftNavSequence = get().navigateToLift(shuttleId, currentX, currentY);
+      sequence.push(...liftNavSequence);
 
-       // Move Lift
-       sequence.push({ type: 'LIFT_MOVE', id: liftId, level: targetLevel });
+      // Board, move lift, disembark
+      sequence.push({ type: 'SHUTTLE_BOARD', id: liftId, shuttleId });
+      sequence.push({ type: 'LIFT_MOVE', id: liftId, level: targetLevel });
+      sequence.push({ type: 'SHUTTLE_BOARD', id: null, shuttleId });
 
-       // Disembark
-       sequence.push({ type: 'SHUTTLE_BOARD', id: null, shuttleId });
+      // After disembark, shuttle is at (liftX, liftY, targetLevel)
+      console.log(`[OUTBOUND] Disembarked at lift position: X=${liftX}, Y=${liftY}, Level=${targetLevel}`);
     }
 
-    // 2. Navigate directly to pallet location using pathfinder
-    // Pathfinder will handle optimal route from current position
-    console.log(`[OUTBOUND DEBUG] Navigating to pallet at X=${targetX}, Y=${targetRow}`);
-    sequence.push({ type: 'NAVIGATE_TO', targetX: targetX, targetY: targetRow, shuttleId });
+    // === STAGE 2: NAVIGATE TO PALLET ===
+    // Current position after level change (or initial if no change needed)
+    const fromX = currentLevel !== targetLevel ? liftX : currentX;
+    const fromY = currentLevel !== targetLevel ? liftY : currentY;
 
-    // === PHASE 2: PICK PALLET ===
-    console.log(`[OUTBOUND DEBUG] Will lift and remove pallet at X=${targetX}, Y=${targetRow}, Level=${targetLevel}`);
+    console.log(`[OUTBOUND] Navigating from (${fromX}, ${fromY}) to pallet at (${targetX}, ${targetRow})`);
+
+    try {
+      const palletNavSequence = get().generateEscapeTravelApproach(
+        fromX, fromY,
+        targetX, targetRow,
+        shuttleId
+      );
+      sequence.push(...palletNavSequence);
+    } catch (error) {
+      get().addLog(`❌ Navigation error: ${error.message}`, 'error');
+      return;
+    }
+
+    // === STAGE 3: PICK PALLET ===
+    console.log(`[OUTBOUND] Picking pallet at (${targetX}, ${targetRow}, ${targetLevel})`);
     sequence.push({ type: 'SHUTTLE_LIFT', lift: true, shuttleId });
+    sequence.push({ type: 'WAIT', duration: 500, message: 'Picking pallet...' });
     sequence.push({ type: 'REMOVE_INVENTORY', x: targetX, y: targetRow, level: targetLevel, shuttleId });
 
-    // === PHASE 3: RETURN TO OUTPUT ===
+    // === STAGE 4: RETURN TO LIFT ===
+    console.log(`[OUTBOUND] Returning to lift at (${liftX}, ${liftY})`);
 
-    // Navigate back to lift output using pathfinder
-    console.log(`[OUTBOUND DEBUG] Returning to lift at X=${liftX}, Y=${liftRowY}`);
-    sequence.push({ type: 'NAVIGATE_TO', targetX: liftX, targetY: liftRowY, shuttleId });
-
-    // If we are not at Level 1, go down
-    if (targetLevel > 1) {
-       sequence.push({ type: 'SHUTTLE_BOARD', id: liftId, shuttleId });
-       sequence.push({ type: 'LIFT_MOVE', id: liftId, level: 1 });
-       // Don't disembark yet
+    try {
+      const returnNavSequence = get().generateEscapeTravelApproach(
+        targetX, targetRow,
+        liftX, liftY,
+        shuttleId
+      );
+      sequence.push(...returnNavSequence);
+    } catch (error) {
+      get().addLog(`❌ Return navigation error: ${error.message}`, 'error');
+      return;
     }
 
-    // Drop Pallet at Lift (or Conveyor)
+    // === STAGE 5: LEVEL DOWN (if not at Level 1) ===
+    if (targetLevel > 1) {
+      console.log(`[OUTBOUND] Returning to Level 1 from Level ${targetLevel}`);
+      sequence.push({ type: 'SHUTTLE_BOARD', id: liftId, shuttleId });
+      sequence.push({ type: 'LIFT_MOVE', id: liftId, level: 1 });
+      sequence.push({ type: 'SHUTTLE_BOARD', id: null, shuttleId });
+    }
+
+    // === STAGE 6: DROP PALLET AT OUTPUT ===
+    console.log(`[OUTBOUND] Dropping pallet at lift output`);
     sequence.push({ type: 'SHUTTLE_LIFT', lift: false, shuttleId });
-
-    // Simulate "Despawn" or "Transfer to Conveyor"
-    // We already removed it from inventory.
-    // Just log it.
+    sequence.push({ type: 'WAIT', duration: 500, message: 'Dropping pallet...' });
     sequence.push({ type: 'LOG', message: 'Outbound Pallet Dropped at Output' });
-
-    // Explicitly clear carried pallet from shuttle visual
     sequence.push({ type: 'CLEAR_CARRIED_PALLET', shuttleId });
 
-    // Disembark and move away using pathfinder
-    sequence.push({ type: 'SHUTTLE_BOARD', id: null, shuttleId });
-    sequence.push({ type: 'NAVIGATE_TO', targetX: highwayX, targetY: highwayY, shuttleId });
+    // === STAGE 7: MOVE TO HIGHWAY ===
+    console.log(`[OUTBOUND] Returning to highway Y=${highway} at current depth X=${liftX}`);
+    try {
+      const highwayNavSequence = get().generateEscapeTravelApproach(
+        liftX, liftY,
+        liftX, highway,  // Keep X, return to highway Y
+        shuttleId
+      );
+      sequence.push(...highwayNavSequence);
+    } catch (error) {
+      get().addLog(`❌ Highway navigation error: ${error.message}`, 'error');
+      // Don't return, pallet already dropped - this is just positioning
+    }
 
+    sequence.push({ type: 'LOG', message: 'Outbound Complete!' });
+
+    // Execute sequence
     get().executeSequence(sequence, shuttleId);
   },
 
   /**
-   * Process Transfer Request
-   * Move pallet from A to B
+   * Process Transfer Request (Refactored for logic.md compliance)
+   *
+   * Flow:
+   * 1. Find source pallet (closest to aisle) and destination slot (deepest)
+   * 2. If source level != current: navigate to lift → board → move → disembark
+   * 3. Navigate to source pallet using 3-phase movement
+   * 4. Pick pallet
+   * 5. If source level != dest level: navigate to lift → board → move → disembark
+   * 6. Navigate to destination using 3-phase movement
+   * 7. Drop pallet
+   * 8. Exit to highway
    */
   processTransferRequest: (fromRow, fromLevel, toRow, toLevel) => {
     const state = get();
     const { inventory, shuttles } = state;
 
-    // Determine shuttle (Assume same block for now or use Shuttle 1)
+    // Determine shuttle based on source row
     const isUpperBlock = fromRow > 12;
     const shuttleId = isUpperBlock ? 'SHUTTLE_2' : 'SHUTTLE_1';
+    const liftId = isUpperBlock ? 'LIFT_UPPER' : 'LIFT_LOWER';
     const shuttle = shuttles[shuttleId];
+    const { liftX, liftY, highway } = shuttle;
 
-    // 1. Find Source Pallet
+    // 1. Find Source Pallet (Closest to aisle)
     let sourceX = null;
     for (let x = 5; x <= 25; x++) {
       if (inventory[`${x},${fromRow},${fromLevel}`]) {
@@ -712,114 +831,125 @@ export const useWarehouseStore = create((set, get) => ({
       return;
     }
 
-    get().addLog(`🔄 Transfer: ${fromRow}/${fromLevel} -> ${toRow}/${toLevel}`, 'start');
+    get().addLog(`🔄 Transfer: Rail ${fromRow}/L${fromLevel} → Rail ${toRow}/L${toLevel}`, 'start');
 
     const sequence = [];
-    const highwayX = 4;
-    const liftX = 2;
-    const liftId = isUpperBlock ? 'LIFT_UPPER' : 'LIFT_LOWER';
-    const liftRow = isUpperBlock ? 19 : 5;
-    const highwayY = isUpperBlock ? 20 : 4;
+    const currentLevel = shuttle.gridPosition.level || 1;
+    const currentX = shuttle.gridPosition.x;
+    const currentY = shuttle.gridPosition.y;
 
-    // Helper to move to a location
-    const moveToLocation = (targetX, targetRow, targetLevel) => {
-        // ... (Logic to move shuttle to x,y,level)
-        // This is getting complex to duplicate.
-        // Ideally we'd have a "generateMoveSequence" helper.
-        // For now, I'll simplify: Assume we are at highwayX, highwayY, Level 1 initially or handle it.
-    };
+    console.log(`[TRANSFER] Source: (${sourceX}, ${fromRow}, ${fromLevel}) → Dest: (${destX}, ${toRow}, ${toLevel})`);
 
-    // === PHASE 1: PICK UP ===
-    // (Similar to Outbound Phase 1 & 2)
+    // === STAGE 1: LEVEL CHANGE TO SOURCE (if needed) ===
+    if (currentLevel !== fromLevel) {
+      console.log(`[TRANSFER] Level change: ${currentLevel} → ${fromLevel}`);
 
-    // ... [Insert movement logic to Source] ...
-    // For brevity in this tool call, I will implement a simplified version that assumes
-    // the shuttle can navigate. In a real app, I'd refactor the movement logic.
+      // Navigate to lift
+      const liftNavSequence = get().navigateToLift(shuttleId, currentX, currentY);
+      sequence.push(...liftNavSequence);
 
-    // 1. Go to Source Level
-    // (Simplified: Assume Level 1 for now or add lift logic)
-
-    // 2. Go to Source Row/X
-    const sourceRowHighway = get().findNearestHorizontalHighway(fromRow);
-
-    // Move to Highway
-    sequence.push(
-        { type: 'SHUTTLE_MODE', mode: 'AISLE', shuttleId },
-        { type: 'SHUTTLE_MOVE', target: [highwayX, highwayY], shuttleId } // Start point
-    );
-
-    if (highwayY !== sourceRowHighway) {
-        sequence.push(
-            { type: 'SHUTTLE_MODE', mode: 'RAIL', shuttleId },
-            { type: 'SHUTTLE_MOVE', target: [highwayX, sourceRowHighway], shuttleId }
-        );
+      // Board, move, disembark
+      sequence.push({ type: 'SHUTTLE_BOARD', id: liftId, shuttleId });
+      sequence.push({ type: 'LIFT_MOVE', id: liftId, level: fromLevel });
+      sequence.push({ type: 'SHUTTLE_BOARD', id: null, shuttleId });
     }
 
-    sequence.push(
-        { type: 'SHUTTLE_MODE', mode: 'AISLE', shuttleId },
-        { type: 'SHUTTLE_MOVE', target: [sourceX, sourceRowHighway], shuttleId }
-    );
+    // === STAGE 2: NAVIGATE TO SOURCE PALLET ===
+    const fromX = currentLevel !== fromLevel ? liftX : currentX;
+    const fromY = currentLevel !== fromLevel ? liftY : currentY;
 
-    if (fromRow !== sourceRowHighway) {
-        sequence.push(
-            { type: 'SHUTTLE_MODE', mode: 'RAIL', shuttleId },
-            { type: 'SHUTTLE_MOVE', target: [sourceX, fromRow], shuttleId }
-        );
+    console.log(`[TRANSFER] Navigating to source pallet at (${sourceX}, ${fromRow})`);
+
+    try {
+      const sourceNavSequence = get().generateEscapeTravelApproach(
+        fromX, fromY,
+        sourceX, fromRow,
+        shuttleId
+      );
+      sequence.push(...sourceNavSequence);
+    } catch (error) {
+      get().addLog(`❌ Navigation error: ${error.message}`, 'error');
+      return;
     }
 
-    // Pick
+    // === STAGE 3: PICK PALLET ===
+    console.log(`[TRANSFER] Picking pallet from (${sourceX}, ${fromRow}, ${fromLevel})`);
+
     sequence.push({ type: 'SHUTTLE_LIFT', lift: true, shuttleId });
+    sequence.push({ type: 'WAIT', duration: 500, message: 'Picking pallet...' });
     sequence.push({ type: 'REMOVE_INVENTORY', x: sourceX, y: fromRow, level: fromLevel, shuttleId });
 
-    // === PHASE 2: MOVE TO DESTINATION ===
+    // === STAGE 4: LEVEL CHANGE TO DESTINATION (if needed) ===
+    if (fromLevel !== toLevel) {
+      console.log(`[TRANSFER] Level change: ${fromLevel} → ${toLevel}`);
 
-    // Exit Source Rack
-    if (fromRow !== sourceRowHighway) {
-        sequence.push(
-            { type: 'SHUTTLE_MOVE', target: [sourceX, sourceRowHighway], shuttleId }
+      // Navigate back to lift with pallet
+      try {
+        const liftReturnSequence = get().generateEscapeTravelApproach(
+          sourceX, fromRow,
+          liftX, liftY,
+          shuttleId
         );
+        sequence.push(...liftReturnSequence);
+      } catch (error) {
+        get().addLog(`❌ Lift navigation error: ${error.message}`, 'error');
+        return;
+      }
+
+      // Board lift
+      sequence.push({ type: 'SHUTTLE_BOARD', id: liftId, shuttleId });
+
+      // Move to destination level
+      sequence.push({ type: 'LIFT_MOVE', id: liftId, level: toLevel });
+      sequence.push({ type: 'WAIT', duration: 2000, message: 'Lift moving...' });
+
+      // Disembark
+      sequence.push({ type: 'SHUTTLE_BOARD', id: null, shuttleId });
     }
 
-    // Go to Highway X
-    sequence.push(
-        { type: 'SHUTTLE_MODE', mode: 'AISLE', shuttleId },
-        { type: 'SHUTTLE_MOVE', target: [highwayX, sourceRowHighway], shuttleId }
-    );
+    // === STAGE 5: NAVIGATE TO DESTINATION ===
+    const startX = fromLevel !== toLevel ? liftX : sourceX;
+    const startY = fromLevel !== toLevel ? liftY : fromRow;
 
-    // Go to Dest Row Highway
-    const destRowHighway = get().findNearestHorizontalHighway(toRow);
-    if (sourceRowHighway !== destRowHighway) {
-        sequence.push(
-            { type: 'SHUTTLE_MODE', mode: 'RAIL', shuttleId },
-            { type: 'SHUTTLE_MOVE', target: [highwayX, destRowHighway], shuttleId }
-        );
+    console.log(`[TRANSFER] Navigating to destination (${destX}, ${toRow})`);
+
+    try {
+      const destNavSequence = get().generateEscapeTravelApproach(
+        startX, startY,
+        destX, toRow,
+        shuttleId
+      );
+      sequence.push(...destNavSequence);
+    } catch (error) {
+      get().addLog(`❌ Destination navigation error: ${error.message}`, 'error');
+      return;
     }
 
-    // Go to Dest X
-    sequence.push(
-        { type: 'SHUTTLE_MODE', mode: 'AISLE', shuttleId },
-        { type: 'SHUTTLE_MOVE', target: [destX, destRowHighway], shuttleId }
-    );
+    // === STAGE 6: DROP PALLET ===
+    console.log(`[TRANSFER] Dropping pallet at (${destX}, ${toRow}, ${toLevel})`);
 
-    // Enter Dest Rack
-    if (toRow !== destRowHighway) {
-        sequence.push(
-            { type: 'SHUTTLE_MODE', mode: 'RAIL', shuttleId },
-            { type: 'SHUTTLE_MOVE', target: [destX, toRow], shuttleId }
-        );
-    }
-
-    // Drop
     sequence.push({ type: 'SHUTTLE_LIFT', lift: false, shuttleId });
+    sequence.push({ type: 'WAIT', duration: 500, message: 'Dropping pallet...' });
     sequence.push({ type: 'ADD_INVENTORY', x: destX, y: toRow, level: toLevel, shuttleId });
 
-    // Exit Dest Rack
-    if (toRow !== destRowHighway) {
-        sequence.push(
-            { type: 'SHUTTLE_MOVE', target: [destX, destRowHighway], shuttleId }
-        );
+    // === STAGE 7: EXIT TO HIGHWAY ===
+    console.log(`[TRANSFER] Returning to highway Y=${highway} at current depth X=${destX}`);
+
+    try {
+      const exitSequence = get().generateEscapeTravelApproach(
+        destX, toRow,
+        destX, highway,  // Keep X, return to highway Y
+        shuttleId
+      );
+      sequence.push(...exitSequence);
+    } catch (error) {
+      get().addLog(`❌ Exit navigation error: ${error.message}`, 'error');
+      // Don't return, pallet already dropped
     }
 
+    sequence.push({ type: 'LOG', message: 'Transfer Complete!' });
+
+    // Execute sequence
     get().executeSequence(sequence, shuttleId);
   },
 
@@ -844,16 +974,6 @@ export const useWarehouseStore = create((set, get) => ({
         const currentShuttle = get().shuttles[currentShuttleId];
 
         switch (step.type) {
-          case 'NAVIGATE_TO':
-            // Use pathfinder to navigate to target grid position
-            get().addLog(`🎯 ${currentShuttleId} Navigating to Rail ${step.targetY}, Depth ${step.targetX}`, 'info');
-            get().navigateTo(currentShuttleId, step.targetX, step.targetY);
-
-            // Wait for navigation to complete
-            await waitForShuttleArrival(currentShuttleId);
-            get().addLog(`✅ ${currentShuttleId} Arrived at Rail ${step.targetY}, Depth ${step.targetX}`, 'success');
-            break;
-
           case 'SHUTTLE_BOARD':
             updateShuttle(currentShuttleId, { onLift: step.id });
             get().addLog(step.id ? `${currentShuttleId} Boarding Lift ${step.id}` : `${currentShuttleId} Disembarking Lift`, 'action');
@@ -899,10 +1019,30 @@ export const useWarehouseStore = create((set, get) => ({
             // Convert Grid to World
             const [gx, gy] = step.target;
             const currentLevel = currentShuttle.gridPosition?.level || 1;
+            const fromX = currentShuttle.gridPosition?.x || gx;
+            const fromY = currentShuttle.gridPosition?.y || gy;
+
+            // VALIDATION: Check mode constraint before moving
+            const currentMode = currentShuttle.mode || 'AISLE';
+            try {
+              get().validateModeConstraint(currentMode, fromX, fromY, gx, gy);
+            } catch (error) {
+              get().addLog(`❌ ${currentShuttleId} Movement BLOCKED: ${error.message}`, 'error');
+              console.error(`[SHUTTLE_MOVE] Validation failed:`, {
+                mode: currentMode,
+                from: [fromX, fromY],
+                to: [gx, gy],
+                error: error.message
+              });
+              throw error; // Stop sequence execution
+            }
+
             const worldPos = gridToWorld(gx, gy, currentLevel);
 
-            // Log movement with Rail/Depth format
-            get().addLog(`🚀 ${currentShuttleId} Moving to Rail ${gy}, Depth ${gx}`, 'move');
+            // Log movement with mode info
+            const moveType = fromX !== gx ? 'Depth' : 'Rail';
+            get().addLog(`🚀 ${currentShuttleId} [${currentMode}] Moving to Rail ${gy}, Depth ${gx}`, 'move');
+            console.log(`[SHUTTLE_MOVE] ${currentShuttleId} ${moveType}: (${fromX},${fromY}) → (${gx},${gy})`);
 
             // Update state to trigger movement in Shuttle.jsx
             updateShuttle(currentShuttleId, {

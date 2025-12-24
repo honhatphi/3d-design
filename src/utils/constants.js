@@ -25,3 +25,29 @@ export const DIMENSIONS = {
   holeSize: 0.04,   // 40mm diameter holes
   holeSpacing: 0.15, // 150mm vertical spacing
 };
+
+// Shuttle zone configurations
+export const SHUTTLE_ZONES = {
+  SHUTTLE_1: {
+    minRail: 1,
+    maxRail: 11,
+    highway: 4,
+    liftX: 2,
+    liftY: 5,
+    assignedLift: 'LIFT_LOWER',
+  },
+  SHUTTLE_2: {
+    minRail: 13,
+    maxRail: 23,
+    highway: 20,
+    liftX: 2,
+    liftY: 19,
+    assignedLift: 'LIFT_UPPER',
+  },
+};
+
+// Highway positions
+export const HIGHWAYS = {
+  HORIZONTAL: [4, 12, 20],
+  VERTICAL: 4,
+};
