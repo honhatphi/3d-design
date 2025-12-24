@@ -1,5 +1,5 @@
 import { useWarehouseStore } from '../../store/warehouseStore';
-import { Camera, Eye, Maximize, PackagePlus, Monitor, Upload, Download, RefreshCw, ArrowRight } from 'lucide-react';
+import { Camera, Eye, Maximize, PackagePlus, Monitor, Upload, Download, RefreshCw, ArrowRight, Repeat } from 'lucide-react';
 import { useState } from 'react';
 
 export default function ShuttleControls() {
@@ -159,7 +159,7 @@ export default function ShuttleControls() {
              </div>
           ) : (
              // Inbound/Outbound Controls
-             <>
+             <div className="flex gap-2">
                 <button
                     onClick={() => handleTask(6)}
                     disabled={shuttleBusy['SHUTTLE_1']}
@@ -170,13 +170,14 @@ export default function ShuttleControls() {
                             ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/30 hover:bg-emerald-700'
                             : 'bg-red-600 text-white shadow-lg shadow-red-500/30 hover:bg-red-700'
                     }`}
+                    title="Run 1 task on Shuttle 1"
                 >
                     {shuttleBusy['SHUTTLE_1'] ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     ) : (
                         taskType === 'INBOUND' ? <Download size={18} /> : <Upload size={18} />
                     )}
-                    Lower (S1)
+                    Shuttle 1
                 </button>
 
                 <button
@@ -189,15 +190,16 @@ export default function ShuttleControls() {
                             ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/30 hover:bg-emerald-700'
                             : 'bg-red-600 text-white shadow-lg shadow-red-500/30 hover:bg-red-700'
                     }`}
+                    title="Run 1 task on Shuttle 2"
                 >
                     {shuttleBusy['SHUTTLE_2'] ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     ) : (
                         taskType === 'INBOUND' ? <Download size={18} /> : <Upload size={18} />
                     )}
-                    Upper (S2)
+                    Shuttle 2
                 </button>
-             </>
+             </div>
           )}
         </div>
       </div>

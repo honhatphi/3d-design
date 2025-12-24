@@ -59,7 +59,126 @@ export const useWarehouseStore = create((set, get) => ({
 
   // Inventory State
   // Map: "x,y,level" -> { id, color, type }
-  inventory: {},
+  inventory: (() => {
+    const newInventory = {};
+    const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+    let palletId = 1;
+
+    // LOWER BLOCK: Rails 1-11 (Shuttle 1, Highway Y=4)
+    // Fill from deepest rows FIRST (Row 1, 2, 3...) so they don't get blocked
+    // TRUE 2/3 capacity: X from 25 down to 13 (13 positions out of 20 = 65%)
+
+    // Row 1: Deepest - 4 levels, X from 25 to 13
+    for (let z = 1; z <= 4; z++) {
+      for (let x = 25; x >= 13; x--) {
+        newInventory[`${x},1,${z}`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+      }
+    }
+
+    // Row 2: 4 levels, X from 25 to 14
+    for (let z = 1; z <= 4; z++) {
+      for (let x = 25; x >= 14; x--) {
+        newInventory[`${x},2,${z}`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+      }
+    }
+
+    // Row 3: 3 levels, X from 25 to 15
+    for (let z = 1; z <= 3; z++) {
+      for (let x = 25; x >= 15; x--) {
+        newInventory[`${x},3,${z}`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+      }
+    }
+
+    // Row 5: 3 levels, X from 25 to 16 (skip row 4 - it's the highway)
+    for (let z = 1; z <= 3; z++) {
+      for (let x = 25; x >= 16; x--) {
+        newInventory[`${x},5,${z}`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+      }
+    }
+
+    // Row 6: 2 levels, X from 25 to 17
+    for (let z = 1; z <= 2; z++) {
+      for (let x = 25; x >= 17; x--) {
+        newInventory[`${x},6,${z}`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+      }
+    }
+
+    // Row 7: 2 levels, X from 25 to 18
+    for (let z = 1; z <= 2; z++) {
+      for (let x = 25; x >= 18; x--) {
+        newInventory[`${x},7,${z}`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+      }
+    }
+
+    // Row 8: 1 level, X from 25 to 19
+    for (let x = 25; x >= 19; x--) {
+      newInventory[`${x},8,1`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+    }
+
+    // Row 9: 1 level, X from 25 to 20
+    for (let x = 25; x >= 20; x--) {
+      newInventory[`${x},9,1`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+    }
+
+    // UPPER BLOCK: Rails 13-23 (Shuttle 2, Highway Y=20)
+    // Fill from deepest rows FIRST (Row 23, 22, 21...) so they don't get blocked
+    // TRUE 2/3 capacity: X from 25 down to 13 (13 positions out of 20 = 65%)
+
+    // Row 23: Deepest - 4 levels, X from 25 to 13
+    for (let z = 1; z <= 4; z++) {
+      for (let x = 25; x >= 13; x--) {
+        newInventory[`${x},23,${z}`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+      }
+    }
+
+    // Row 22: 4 levels, X from 25 to 14
+    for (let z = 1; z <= 4; z++) {
+      for (let x = 25; x >= 14; x--) {
+        newInventory[`${x},22,${z}`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+      }
+    }
+
+    // Row 21: 3 levels, X from 25 to 15
+    for (let z = 1; z <= 3; z++) {
+      for (let x = 25; x >= 15; x--) {
+        newInventory[`${x},21,${z}`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+      }
+    }
+
+    // Row 19: 3 levels, X from 25 to 16 (skip row 20 - it's the highway)
+    for (let z = 1; z <= 3; z++) {
+      for (let x = 25; x >= 16; x--) {
+        newInventory[`${x},19,${z}`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+      }
+    }
+
+    // Row 18: 2 levels, X from 25 to 17
+    for (let z = 1; z <= 2; z++) {
+      for (let x = 25; x >= 17; x--) {
+        newInventory[`${x},18,${z}`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+      }
+    }
+
+    // Row 17: 2 levels, X from 25 to 18
+    for (let z = 1; z <= 2; z++) {
+      for (let x = 25; x >= 18; x--) {
+        newInventory[`${x},17,${z}`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+      }
+    }
+
+    // Row 16: 1 level, X from 25 to 19
+    for (let x = 25; x >= 19; x--) {
+      newInventory[`${x},16,1`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+    }
+
+    // Row 15: 1 level, X from 25 to 20
+    for (let x = 25; x >= 20; x--) {
+      newInventory[`${x},15,1`] = { id: `P-${String(palletId++).padStart(3, '0')}`, color: colors[(palletId-1) % 8] };
+    }
+
+    console.log(`[InitInventory] Created ${palletId - 1} pallets filling ~2/3 warehouse (X: 25→13)`);
+    return newInventory;
+  })(),
 
   // Conveyor State
   // Track pallets on conveyors
@@ -149,23 +268,6 @@ export const useWarehouseStore = create((set, get) => ({
       [id]: { ...state.conveyorPallets[id], ...updates }
     }
   })),
-
-  initInventory: () => {
-    const newInventory = {};
-    // Add some test pallets
-    // Format: "gridX,gridY,level"
-    // Block C (near start)
-    newInventory['3,6,1'] = { id: 'P-001', color: '#ef4444' }; // Red
-    newInventory['5,6,1'] = { id: 'P-002', color: '#3b82f6' }; // Blue
-    newInventory['5,6,2'] = { id: 'P-003', color: '#10b981' }; // Green
-    newInventory['3,6,3'] = { id: 'P-004', color: '#f59e0b' }; // Amber
-
-    // Block D
-    newInventory['3,3,1'] = { id: 'P-005', color: '#8b5cf6' }; // Purple
-    newInventory['5,5,2'] = { id: 'P-006', color: '#ec4899' }; // Pink
-
-    set({ inventory: newInventory });
-  },
 
   // Shuttle Actions
   updateShuttle: (id, updates) => set((state) => ({
@@ -750,28 +852,55 @@ export const useWarehouseStore = create((set, get) => ({
       sequence.push({ type: 'SHUTTLE_BOARD', id: liftId, shuttleId });
       sequence.push({ type: 'LIFT_MOVE', id: liftId, level: 1 });
       sequence.push({ type: 'SHUTTLE_BOARD', id: null, shuttleId });
+    } else {
+      // Already at Level 1, but need to disembark if still on lift
+      console.log(`[OUTBOUND] Already at Level 1, disembarking from lift`);
+      sequence.push({ type: 'SHUTTLE_BOARD', id: null, shuttleId });
     }
 
     // === STAGE 6: DROP PALLET AT OUTPUT ===
     console.log(`[OUTBOUND] Dropping pallet at lift output`);
+
+    // Lower the shuttle deck to drop pallet
     sequence.push({ type: 'SHUTTLE_LIFT', lift: false, shuttleId });
-    sequence.push({ type: 'WAIT', duration: 500, message: 'Dropping pallet...' });
-    sequence.push({ type: 'LOG', message: 'Outbound Pallet Dropped at Output' });
+    sequence.push({ type: 'WAIT', duration: 800, message: 'Dropping pallet...' });
+
+    // Get carried pallet info before clearing
+    const palletId = `OUTBOUND-${Date.now()}`;
+
+    // Clear shuttle's carried pallet reference (visual update)
     sequence.push({ type: 'CLEAR_CARRIED_PALLET', shuttleId });
 
-    // === STAGE 7: MOVE TO HIGHWAY ===
-    console.log(`[OUTBOUND] Returning to highway Y=${highway} at current depth X=${liftX}`);
-    try {
-      const highwayNavSequence = get().generateEscapeTravelApproach(
-        liftX, liftY,
-        liftX, highway,  // Keep X, return to highway Y
-        shuttleId
-      );
-      sequence.push(...highwayNavSequence);
-    } catch (error) {
-      get().addLog(`❌ Highway navigation error: ${error.message}`, 'error');
-      // Don't return, pallet already dropped - this is just positioning
-    }
+    // === STAGE 6b: SHUTTLE MOVES AWAY FROM LIFT ===
+    // Shuttle must move away before conveyor animation
+    console.log(`[OUTBOUND] Shuttle moving away from lift`);
+    sequence.push({ type: 'SHUTTLE_MODE', mode: 'RAIL', shuttleId });
+    sequence.push({ type: 'SHUTTLE_MOVE', target: [liftX, highway], shuttleId });
+
+    // === STAGE 6c: TRANSFER TO CONVEYOR ===
+    console.log(`[OUTBOUND] Transferring pallet to conveyor`);
+
+    // Spawn pallet directly on conveyor (no inventory step)
+    const conveyorY = isUpperBlock ? 18 : 6;
+    sequence.push({
+      type: 'SPAWN_CONVEYOR_PALLET',
+      id: palletId,
+      x: 2,  // Lift X position
+      y: liftY,
+      level: 1
+    });
+
+    // Move pallet along conveyor to exit
+    sequence.push({ type: 'WAIT', duration: 300, message: 'Loading to conveyor...' });
+    sequence.push(
+      { type: 'MOVE_CONVEYOR_PALLET', id: palletId, x: 2, y: conveyorY },
+      { type: 'MOVE_CONVEYOR_PALLET', id: palletId, x: 1, y: conveyorY },
+      { type: 'MOVE_CONVEYOR_PALLET', id: palletId, x: 0, y: conveyorY }
+    );
+
+    // Despawn pallet at exit
+    sequence.push({ type: 'REMOVE_CONVEYOR_PALLET', id: palletId });
+    sequence.push({ type: 'LOG', message: 'Outbound Pallet Exported!' });
 
     sequence.push({ type: 'LOG', message: 'Outbound Complete!' });
 
@@ -1118,6 +1247,13 @@ export const useWarehouseStore = create((set, get) => ({
             await new Promise(r => setTimeout(r, 500));
             break;
 
+          case 'REMOVE_CONVEYOR_PALLET':
+            // Remove pallet from conveyor (despawn at exit)
+            get().removeConveyorPallet(step.id);
+            get().addLog(`📤 Pallet ${step.id} exported`, 'success');
+            await new Promise(r => setTimeout(r, 500));
+            break;
+
           case 'WAIT':
             // Wait for specified duration
             if (step.message) {
@@ -1165,7 +1301,7 @@ export const useWarehouseStore = create((set, get) => ({
         shuttleBusy: { ...state.shuttleBusy, [shuttleId]: false }
       }));
     }
-  }
+  },
 
 }));
 
