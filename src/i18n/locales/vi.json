@@ -1,0 +1,55 @@
+{
+  "common": {
+    "loading": "Đang tải...",
+    "shuttle": "Shuttle",
+    "level": "Tầng",
+    "camera": "Camera",
+    "activeView": "Góc nhìn"
+  },
+  "guide": {
+    "title": "Hướng dẫn",
+    "inbound": {
+      "title": "Nhập kho (Store)",
+      "step1": "Chọn chế độ <1>Nhập</1>",
+      "step2": "Chọn <1>Tầng đích</1>",
+      "step3": "Nhấn nút Shuttle"
+    },
+    "outbound": {
+      "title": "Xuất kho (Retrieve)",
+      "step1": "Chọn chế độ <1>Xuất</1>",
+      "step2": "Chọn <1>Tầng đích</1>",
+      "step3": "Nhấn nút Shuttle"
+    },
+    "transfer": {
+      "title": "Chuyển kho (Move)",
+      "step1": "Chọn chế độ <1>Chuyển</1>",
+      "step2": "Chọn Tầng <1>Từ</1> & <1>Đến</1>",
+      "step3": "Nhấn nút Shuttle"
+    },
+    "camera": {
+      "title": "Chế độ Camera",
+      "overview": "<1>Toàn cảnh:</1> Xem toàn kho",
+      "follow": "<1>Theo dõi:</1> Theo sát shuttle",
+      "free": "<1>Tự do:</1> Điều khiển thủ công"
+    }
+  },
+  "controls": {
+    "taskControl": "Điều khiển tác vụ",
+    "in": "Nhập",
+    "out": "Xuất",
+    "move": "Chuyển",
+    "runTask": "Chạy 1 tác vụ trên {{shuttle}}"
+  },
+  "logs": {
+    "title": "Nhật ký",
+    "clear": "Xóa",
+    "empty": "Chưa có hoạt động..."
+  },
+  "header": {
+    "dashboard": "Tổng quan",
+    "devices": "Thiết bị",
+    "orders": "Đơn hàng & Lịch sử",
+    "analytics": "Phân tích",
+    "inventory": "Kho hàng"
+  }
+}

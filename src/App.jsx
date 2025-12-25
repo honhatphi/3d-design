@@ -15,6 +15,7 @@ import Conveyor from './components/3D/Warehouse/Conveyor';
 import ConveyorPallet from './components/3D/Warehouse/ConveyorPallet';
 import ShuttleControls from './components/UI/ShuttleControls';
 import ActivityLogPanel from './components/UI/ActivityLogPanel';
+import GuidePanel from './components/UI/GuidePanel';
 import { gridToWorld } from './utils/gridHelpers';
 import { DIMENSIONS } from './utils/constants';
 import { useWarehouseStore } from './store/warehouseStore';
@@ -86,17 +87,9 @@ function App() {
       {/* Activity Log Panel */}
       <ActivityLogPanel />
 
-      {/* Info overlay */}
-      <div className="absolute top-20 left-4 bg-white/90 dark:bg-gray-800/90 p-4 rounded-lg shadow-lg">
-        <h3 className="font-bold text-gray-900 dark:text-white mb-2">
-          🛑 CHECKPOINT 13: Lift Animation
-        </h3>
-        <ul className="text-sm text-gray-700 dark:text-gray-300 space-y-1">
-          <li>🏗️ Lift Logic Implemented</li>
-          <li>⬆️ Use controls to move Lift</li>
-          <li>🔄 Smooth interpolation</li>
-        </ul>
-      </div>
+      {/* Guide Panel */}
+      <GuidePanel />
+
     </MainLayout>
   );
 }

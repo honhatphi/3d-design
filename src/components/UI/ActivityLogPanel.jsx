@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useWarehouseStore } from '../../store/warehouseStore';
+import { useTranslation } from 'react-i18next';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 /**
  * Activity Log Panel
  * Displays real-time logs of shuttle activities
  */
 export default function ActivityLogPanel() {
+  const { t } = useTranslation();
+  const [isMinimized, setIsMinimized] = useState(false);
   const logs = useWarehouseStore((state) => state.activityLogs);
   const clearLogs = useWarehouseStore((state) => state.clearLogs);
 
@@ -27,27 +31,37 @@ export default function ActivityLogPanel() {
   };
 
   return (
-    <div className="absolute top-20 right-4 w-96 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <div className={`absolute top-20 right-4 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden transition-all duration-300 ${isMinimized ? 'w-auto h-auto' : 'w-80'}`}>
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-blue-500 to-purple-600">
+      <div
+        className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-blue-500 to-purple-600 cursor-pointer gap-4"
+        onClick={() => setIsMinimized(!isMinimized)}
+      >
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-          <h3 className="font-bold text-white text-sm">Activity Log</h3>
+          <h3 className="font-bold text-white">{t('logs.title')}</h3>
         </div>
-        <button
-          onClick={clearLogs}
-          className="px-2 py-1 text-xs bg-white/20 hover:bg-white/30 text-white rounded transition-colors"
-          title="Clear logs"
-        >
-          Clear
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); clearLogs(); }}
+            className="px-2 py-1 text-xs bg-white/20 hover:bg-white/30 text-white rounded transition-colors"
+            title={t('logs.clear')}
+          >
+            {t('logs.clear')}
+          </button>
+          <button className="text-white hover:bg-white/20 p-0.5 rounded">
+            {isMinimized ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+          </button>
+        </div>
       </div>
 
       {/* Logs Container */}
-      <div className="h-[500px] overflow-y-auto p-2 space-y-1">
+      {!isMinimized && (
+        <>
+          <div className="h-80 overflow-y-auto p-2 space-y-1">
         {logs.length === 0 ? (
           <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500 text-sm">
-            No activity yet...
+            {t('logs.empty')}
           </div>
         ) : (
           logs.map((log) => (
@@ -72,6 +86,8 @@ export default function ActivityLogPanel() {
           {logs.length} {logs.length === 1 ? 'entry' : 'entries'}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

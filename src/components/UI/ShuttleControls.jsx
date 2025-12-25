@@ -1,8 +1,10 @@
 import { useWarehouseStore } from '../../store/warehouseStore';
 import { Camera, Eye, Maximize, PackagePlus, Monitor, Upload, Download, RefreshCw, ArrowRight, Repeat } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export default function ShuttleControls() {
+  const { t } = useTranslation();
   const activeShuttleId = useWarehouseStore((state) => state.activeShuttleId);
   const setActiveShuttle = useWarehouseStore((state) => state.setActiveShuttle);
   const cameraMode = useWarehouseStore((state) => state.cameraMode);
@@ -32,11 +34,11 @@ export default function ShuttleControls() {
 
       {/* Camera Controls */}
       <div className="flex flex-col gap-2">
-        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Camera</h3>
+        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t('common.camera')}</h3>
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
           <button
             onClick={() => setCameraMode('OVERVIEW')}
-            title="Overview"
+            title={t('guide.camera.overview').replace(/<[^>]*>/g, '')}
             className={`p-2 rounded-md transition-all ${
               cameraMode === 'OVERVIEW'
                 ? 'bg-white dark:bg-gray-600 text-blue-600 shadow-sm'
@@ -47,7 +49,7 @@ export default function ShuttleControls() {
           </button>
           <button
             onClick={() => setCameraMode('FOLLOW')}
-            title="Follow Shuttle"
+            title={t('guide.camera.follow').replace(/<[^>]*>/g, '')}
             className={`p-2 rounded-md transition-all ${
               cameraMode === 'FOLLOW'
                 ? 'bg-white dark:bg-gray-600 text-blue-600 shadow-sm'
@@ -58,7 +60,7 @@ export default function ShuttleControls() {
           </button>
           <button
             onClick={() => setCameraMode('FREE')}
-            title="Free Cam"
+            title={t('guide.camera.free').replace(/<[^>]*>/g, '')}
             className={`p-2 rounded-md transition-all ${
               cameraMode === 'FREE'
                 ? 'bg-white dark:bg-gray-600 text-blue-600 shadow-sm'
@@ -72,7 +74,7 @@ export default function ShuttleControls() {
 
       {/* Shuttle Selection (Camera Focus) */}
       <div className="flex flex-col gap-2">
-        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Active View</h3>
+        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t('common.activeView')}</h3>
         <div className="flex gap-2">
           <button
             onClick={() => setActiveShuttle('SHUTTLE_1')}
@@ -83,7 +85,7 @@ export default function ShuttleControls() {
             }`}
           >
             <Monitor size={16} />
-            Shuttle 1
+            {t('common.shuttle')} 1
           </button>
           <button
             onClick={() => setActiveShuttle('SHUTTLE_2')}
@@ -94,7 +96,7 @@ export default function ShuttleControls() {
             }`}
           >
             <Monitor size={16} />
-            Shuttle 2
+            {t('common.shuttle')} 2
           </button>
         </div>
       </div>
@@ -102,16 +104,16 @@ export default function ShuttleControls() {
       {/* Task Control */}
       <div className="flex flex-col gap-2">
         <div className="flex justify-between items-center">
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Task Control</h3>
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t('controls.taskControl')}</h3>
             <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-0.5 rounded-md">
                 <button onClick={() => setTaskType('INBOUND')} className={`px-2 py-0.5 text-xs rounded flex items-center gap-1 ${taskType === 'INBOUND' ? 'bg-white shadow text-emerald-600' : 'text-gray-500'}`}>
-                    <Download size={12} /> In
+                    <Download size={12} /> {t('controls.in')}
                 </button>
                 <button onClick={() => setTaskType('OUTBOUND')} className={`px-2 py-0.5 text-xs rounded flex items-center gap-1 ${taskType === 'OUTBOUND' ? 'bg-white shadow text-red-600' : 'text-gray-500'}`}>
-                    <Upload size={12} /> Out
+                    <Upload size={12} /> {t('controls.out')}
                 </button>
                 <button onClick={() => setTaskType('TRANSFER')} className={`px-2 py-0.5 text-xs rounded flex items-center gap-1 ${taskType === 'TRANSFER' ? 'bg-white shadow text-purple-600' : 'text-gray-500'}`}>
-                    <RefreshCw size={12} /> Move
+                    <RefreshCw size={12} /> {t('controls.move')}
                 </button>
             </div>
         </div>
@@ -125,10 +127,10 @@ export default function ShuttleControls() {
                 onChange={(e) => setTransferFromLevel(Number(e.target.value))}
                 className="px-2 py-2 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600"
               >
-                <option value={1}>Lvl 1</option>
-                <option value={2}>Lvl 2</option>
-                <option value={3}>Lvl 3</option>
-                <option value={4}>Lvl 4</option>
+                <option value={1}>{t('common.level')} 1</option>
+                <option value={2}>{t('common.level')} 2</option>
+                <option value={3}>{t('common.level')} 3</option>
+                <option value={4}>{t('common.level')} 4</option>
               </select>
               <ArrowRight size={14} className="text-gray-400" />
               <select
@@ -136,10 +138,10 @@ export default function ShuttleControls() {
                 onChange={(e) => setTransferToLevel(Number(e.target.value))}
                 className="px-2 py-2 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600"
               >
-                <option value={1}>Lvl 1</option>
-                <option value={2}>Lvl 2</option>
-                <option value={3}>Lvl 3</option>
-                <option value={4}>Lvl 4</option>
+                <option value={1}>{t('common.level')} 1</option>
+                <option value={2}>{t('common.level')} 2</option>
+                <option value={3}>{t('common.level')} 3</option>
+                <option value={4}>{t('common.level')} 4</option>
               </select>
             </div>
           ) : (
@@ -149,10 +151,10 @@ export default function ShuttleControls() {
               onChange={(e) => setTargetLevel(Number(e.target.value))}
               className="px-2 py-2 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600"
             >
-              <option value={1}>Lvl 1</option>
-              <option value={2}>Lvl 2</option>
-              <option value={3}>Lvl 3</option>
-              <option value={4}>Lvl 4</option>
+              <option value={1}>{t('common.level')} 1</option>
+              <option value={2}>{t('common.level')} 2</option>
+              <option value={3}>{t('common.level')} 3</option>
+              <option value={4}>{t('common.level')} 4</option>
             </select>
           )}
 
@@ -172,14 +174,14 @@ export default function ShuttleControls() {
                                 ? 'bg-red-600 text-white shadow-lg shadow-red-500/30 hover:bg-red-700'
                                 : 'bg-purple-600 text-white shadow-lg shadow-purple-500/30 hover:bg-purple-700'
                     }`}
-                    title="Run 1 task on Shuttle 1"
+                    title={t('controls.runTask', { shuttle: 'Shuttle 1' })}
                 >
                     {shuttleBusy['SHUTTLE_1'] ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     ) : (
                         taskType === 'INBOUND' ? <Download size={18} /> : taskType === 'OUTBOUND' ? <Upload size={18} /> : <RefreshCw size={18} />
                     )}
-                    Shuttle 1
+                    {t('common.shuttle')} 1
                 </button>
 
                 <button
@@ -194,14 +196,14 @@ export default function ShuttleControls() {
                                 ? 'bg-red-600 text-white shadow-lg shadow-red-500/30 hover:bg-red-700'
                                 : 'bg-purple-600 text-white shadow-lg shadow-purple-500/30 hover:bg-purple-700'
                     }`}
-                    title="Run 1 task on Shuttle 2"
+                    title={t('controls.runTask', { shuttle: 'Shuttle 2' })}
                 >
                     {shuttleBusy['SHUTTLE_2'] ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     ) : (
                         taskType === 'INBOUND' ? <Download size={18} /> : taskType === 'OUTBOUND' ? <Upload size={18} /> : <RefreshCw size={18} />
                     )}
-                    Shuttle 2
+                    {t('common.shuttle')} 2
                 </button>
              </div>
           )}

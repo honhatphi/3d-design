@@ -1,0 +1,55 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "shuttle": "Shuttle",
+    "level": "Lvl",
+    "camera": "Camera",
+    "activeView": "Active View"
+  },
+  "guide": {
+    "title": "Guide",
+    "inbound": {
+      "title": "Inbound (Store)",
+      "step1": "Select <1>In</1> mode",
+      "step2": "Choose <1>Target Level</1>",
+      "step3": "Click Shuttle button"
+    },
+    "outbound": {
+      "title": "Outbound (Retrieve)",
+      "step1": "Select <1>Out</1> mode",
+      "step2": "Choose <1>Target Level</1>",
+      "step3": "Click Shuttle button"
+    },
+    "transfer": {
+      "title": "Transfer (Move)",
+      "step1": "Select <1>Move</1> mode",
+      "step2": "Set <1>From</1> & <1>To</1> Levels",
+      "step3": "Click Shuttle button"
+    },
+    "camera": {
+      "title": "Camera Modes",
+      "overview": "<1>Overview:</1> Full warehouse view",
+      "follow": "<1>Follow:</1> Track active shuttle",
+      "free": "<1>Free:</1> Manual control (Orbit)"
+    }
+  },
+  "controls": {
+    "taskControl": "Task Control",
+    "in": "In",
+    "out": "Out",
+    "move": "Move",
+    "runTask": "Run 1 task on {{shuttle}}"
+  },
+  "logs": {
+    "title": "Log",
+    "clear": "Clear",
+    "empty": "No activity yet..."
+  },
+  "header": {
+    "dashboard": "Dashboard",
+    "devices": "Devices",
+    "orders": "Orders & History",
+    "analytics": "Analytics",
+    "inventory": "Inventory"
+  }
+}

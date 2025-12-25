@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   LayoutDashboard,
   Cpu,
@@ -27,6 +28,7 @@ import {
   AlertTriangle,
   Grid3X3,
   Truck,
+  Globe,
 } from 'lucide-react';
 
 // =============================================================================
@@ -35,11 +37,11 @@ import {
 
 /** Navigation tabs per functional requirements */
 const NAV_TABS = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'devices', label: 'Devices', icon: Cpu },
-  { id: 'orders', label: 'Orders & History', icon: ClipboardList },
-  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-  { id: 'inventory', label: 'Inventory', icon: Package },
+  { id: 'dashboard', labelKey: 'header.dashboard', icon: LayoutDashboard },
+  { id: 'devices', labelKey: 'header.devices', icon: Cpu },
+  { id: 'orders', labelKey: 'header.orders', icon: ClipboardList },
+  { id: 'analytics', labelKey: 'header.analytics', icon: BarChart3 },
+  { id: 'inventory', labelKey: 'header.inventory', icon: Package },
 ];
 
 // =============================================================================
@@ -72,7 +74,9 @@ const BrandingArea = () => (
 /**
  * Main Navigation Tabs (Center)
  */
-const NavigationTabs = ({ activeTab, onTabChange }) => (
+const NavigationTabs = ({ activeTab, onTabChange }) => {
+  const { t } = useTranslation();
+  return (
   <nav className="hidden md:flex items-center gap-1 bg-gray-100/80 dark:bg-gray-800/50 p-1 rounded-xl">
     {NAV_TABS.map((tab) => {
       const Icon = tab.icon;
@@ -92,12 +96,13 @@ const NavigationTabs = ({ activeTab, onTabChange }) => (
           `}
         >
           <Icon size={18} className={`transition-transform duration-200 ${isActive ? 'scale-110' : ''}`} />
-          <span className="hidden lg:inline">{tab.label}</span>
+          <span className="hidden lg:inline">{t(tab.labelKey)}</span>
         </button>
       );
     })}
   </nav>
-);
+  );
+};
 
 /**
  * Shuttles Online Indicator
@@ -116,7 +121,7 @@ const ShuttlesIndicator = ({ value = '0/0' }) => (
 const StatusIndicators = ({ health, throughput, alarms }) => (
   <div className="hidden sm:flex items-center gap-3">
     {/* Shuttles Online */}
-    <ShuttlesIndicator value="0/0" />
+    <ShuttlesIndicator value="2/2" />
     {/* System Health */}
     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg
                     transition-all duration-200 cursor-default border
@@ -212,6 +217,33 @@ const ThemeToggle = ({ isDark, onToggle }) => (
     </span>
   </button>
 );
+
+/**
+ * Language Switcher
+ */
+const LanguageSwitcher = () => {
+  const { i18n } = useTranslation();
+  const currentLang = i18n.language;
+
+  const toggleLanguage = () => {
+    const newLang = currentLang === 'en' ? 'vi' : 'en';
+    i18n.changeLanguage(newLang);
+  };
+
+  return (
+    <button
+      onClick={toggleLanguage}
+      className="flex items-center justify-center w-10 h-10 rounded-xl
+                 text-gray-600 hover:bg-gray-100 bg-gray-100/80
+                 dark:text-gray-300 dark:hover:bg-gray-700 dark:bg-gray-800/50
+                 transition-all duration-300 min-h-[40px]
+                 hover:scale-105 active:scale-95 font-bold text-sm"
+      title="Switch Language"
+    >
+      {currentLang === 'en' ? 'VI' : 'EN'}
+    </button>
+  );
+};
 
 /**
  * User Profile Menu
@@ -311,6 +343,7 @@ export const GlobalHeader = ({
           <div className="hidden md:block w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
 
           <DigitalClock />
+          <LanguageSwitcher />
           <ThemeToggle isDark={isDarkMode} onToggle={toggleTheme} />
           <UserProfile />
         </div>
