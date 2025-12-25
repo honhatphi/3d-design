@@ -532,6 +532,54 @@ export const useWarehouseStore = create((set, get) => ({
   },
 
   /**
+   * Check if path to target position is blocked by pallets in intermediate rails
+   * Shuttle must be able to enter the target rail from highway without collision
+   *
+   * @param {number} targetX - Target depth position
+   * @param {number} targetRow - Target rail/row
+   * @param {number} targetLevel - Target level
+   * @param {string} shuttleId - Which shuttle is performing the operation
+   * @param {Object} inventory - Current inventory state
+   * @returns {boolean} - True if path is blocked, false if clear
+   */
+  isPathBlocked: (targetX, targetRow, targetLevel, shuttleId, inventory) => {
+    const shuttle = get().shuttles[shuttleId];
+    const { highway } = shuttle;
+
+    // Xác định hướng shuttle đi vào từ highway
+    // Nếu targetRow < highway: shuttle đi từ highway xuống (giảm Y)
+    // Nếu targetRow > highway: shuttle đi từ highway lên (tăng Y)
+    const isGoingDown = targetRow < highway;
+
+    // Shuttle luôn đi từ X=4 (vertical highway) vào đến targetX
+    // Cần kiểm tra các rail trung gian giữa highway và targetRow
+
+    if (isGoingDown) {
+      // Shuttle đi xuống từ highway: kiểm tra các rail từ highway-1 xuống targetRow+1
+      // Ví dụ: highway=4, targetRow=1 → kiểm tra rails 3, 2
+      for (let checkRow = highway - 1; checkRow > targetRow; checkRow--) {
+        // Kiểm tra vị trí tại depth targetX, cùng level
+        if (inventory[`${targetX},${checkRow},${targetLevel}`]) {
+          console.log(`[BLOCK CHECK] Blocked: Rail ${checkRow} at depth ${targetX}, level ${targetLevel}`);
+          return true; // Bị chắn
+        }
+      }
+    } else {
+      // Shuttle đi lên từ highway: kiểm tra các rail từ highway+1 lên targetRow-1
+      // Ví dụ: highway=20, targetRow=22 → kiểm tra rail 21
+      for (let checkRow = highway + 1; checkRow < targetRow; checkRow++) {
+        // Kiểm tra vị trí tại depth targetX, cùng level
+        if (inventory[`${targetX},${checkRow},${targetLevel}`]) {
+          console.log(`[BLOCK CHECK] Blocked: Rail ${checkRow} at depth ${targetX}, level ${targetLevel}`);
+          return true; // Bị chắn
+        }
+      }
+    }
+
+    return false; // Không bị chắn
+  },
+
+  /**
    * Process Inbound Request (Refactored for logic.md compliance)
    *
    * Flow:
@@ -554,25 +602,54 @@ export const useWarehouseStore = create((set, get) => ({
     const shuttle = shuttles[shuttleId];
     const { liftX, liftY, highway } = shuttle;
 
-    // 1. Find Target Cell (Deepest Empty)
+    // 1. Find Target Cell (Deepest Empty & Not Blocked)
     let targetX = null;
+    let actualTargetRow = targetRow;
     const startX = 5;
     const endX = 25;
 
+    // Thử tìm ở rail được chỉ định trước
     for (let x = endX; x >= startX; x--) {
       if (!inventory[`${x},${targetRow},${targetLevel}`]) {
-        targetX = x;
-        break;
+        if (!get().isPathBlocked(x, targetRow, targetLevel, shuttleId, inventory)) {
+          targetX = x;
+          break;
+        } else {
+          console.log(`[INBOUND] Position (${x}, ${targetRow}, ${targetLevel}) is blocked by intermediate pallets`);
+        }
+      }
+    }
+
+    // Nếu không tìm thấy ở rail được chỉ định, tự động tìm rail khác trong zone
+    if (!targetX) {
+      console.log(`[INBOUND] Rail ${targetRow} has no accessible empty slots, searching other rails...`);
+      const { minRail, maxRail } = shuttle;
+
+      for (let testRow = minRail; testRow <= maxRail; testRow++) {
+        if (testRow === targetRow || testRow === highway) continue; // Bỏ qua rail đã thử và highway
+
+        for (let x = endX; x >= startX; x--) {
+          if (!inventory[`${x},${testRow},${targetLevel}`]) {
+            if (!get().isPathBlocked(x, testRow, targetLevel, shuttleId, inventory)) {
+              targetX = x;
+              actualTargetRow = testRow;
+              console.log(`[INBOUND] Found alternative slot at Rail ${testRow}, Depth ${x}`);
+              get().addLog(`ℹ️ Using Rail ${testRow} instead of ${targetRow} (blocked)`, 'info');
+              break;
+            }
+          }
+        }
+        if (targetX) break;
       }
     }
 
     if (!targetX) {
-      get().addLog(`⚠️ Row ${targetRow} Level ${targetLevel} is full!`, 'error');
+      get().addLog(`⚠️ No accessible empty slots found in zone at level ${targetLevel}!`, 'error');
       return;
     }
 
-    console.log(`[INBOUND] Target: X=${targetX}, Y=${targetRow}, Level=${targetLevel} using ${shuttleId}`);
-    get().addLog(`📥 Inbound: Rail ${targetRow}, Depth ${targetX}, Level ${targetLevel}`, 'start');
+    console.log(`[INBOUND] Target: X=${targetX}, Y=${actualTargetRow}, Level=${targetLevel} using ${shuttleId}`);
+    get().addLog(`📥 Inbound: Rail ${actualTargetRow}, Depth ${targetX}, Level ${targetLevel}`, 'start');
 
     const sequence = [];
     const currentLevel = shuttle.gridPosition.level || 1;
@@ -700,10 +777,10 @@ export const useWarehouseStore = create((set, get) => ({
     }
 
     // === STAGE 5: NAVIGATE TO TARGET ===
-    console.log(`[INBOUND] Navigating from lift (${liftX}, ${liftY}) to target (${targetX}, ${targetRow})`);
+    console.log(`[INBOUND] Navigating from lift (${liftX}, ${liftY}) to target (${targetX}, ${actualTargetRow})`);
 
     try {
-      const targetNavSequence = get().navigateFromLift(shuttleId, targetX, targetRow);
+      const targetNavSequence = get().navigateFromLift(shuttleId, targetX, actualTargetRow);
       sequence.push(...targetNavSequence);
     } catch (error) {
       get().addLog(`❌ Navigation error: ${error.message}`, 'error');
@@ -711,11 +788,11 @@ export const useWarehouseStore = create((set, get) => ({
     }
 
     // === STAGE 6: DROP PALLET ===
-    console.log(`[INBOUND] Dropping pallet at (${targetX}, ${targetRow}, ${targetLevel})`);
+    console.log(`[INBOUND] Dropping pallet at (${targetX}, ${actualTargetRow}, ${targetLevel})`);
 
     sequence.push({ type: 'SHUTTLE_LIFT', lift: false, shuttleId });
     sequence.push({ type: 'WAIT', duration: 500, message: 'Dropping animation...' });
-    sequence.push({ type: 'ADD_INVENTORY', x: targetX, y: targetRow, level: targetLevel, shuttleId });
+    sequence.push({ type: 'ADD_INVENTORY', x: targetX, y: actualTargetRow, level: targetLevel, shuttleId });
 
     // === STAGE 7: EXIT TO HIGHWAY ===
     console.log(`[INBOUND] Returning to highway Y=${highway} at current depth X=${targetX}`);
@@ -723,7 +800,7 @@ export const useWarehouseStore = create((set, get) => ({
     try {
       // Exit from target back to highway at same depth (targetX, highway)
       const exitSequence = get().generateEscapeTravelApproach(
-        targetX, targetRow,
+        targetX, actualTargetRow,
         targetX, highway,  // Keep X, return to highway Y
         shuttleId
       );
@@ -762,24 +839,53 @@ export const useWarehouseStore = create((set, get) => ({
     const shuttle = shuttles[shuttleId];
     const { liftX, liftY, highway } = shuttle;
 
-    // 1. Find Pallet (Closest to aisle = smallest X)
+    // 1. Find Pallet (Closest to aisle = smallest X & Not Blocked)
     let targetX = null;
+    let actualTargetRow = targetRow;
     const startX = 5;
     const endX = 25;
 
+    // Thử tìm ở rail được chỉ định trước
     for (let x = startX; x <= endX; x++) {
       if (inventory[`${x},${targetRow},${targetLevel}`]) {
-        targetX = x;
-        break;
+        if (!get().isPathBlocked(x, targetRow, targetLevel, shuttleId, inventory)) {
+          targetX = x;
+          break;
+        } else {
+          console.log(`[OUTBOUND] Pallet at (${x}, ${targetRow}, ${targetLevel}) is blocked by intermediate pallets`);
+        }
+      }
+    }
+
+    // Nếu không tìm thấy ở rail được chỉ định, tự động tìm rail khác trong zone
+    if (!targetX) {
+      console.log(`[OUTBOUND] Rail ${targetRow} has no accessible pallets, searching other rails...`);
+      const { minRail, maxRail } = shuttle;
+
+      for (let testRow = minRail; testRow <= maxRail; testRow++) {
+        if (testRow === targetRow || testRow === highway) continue; // Bỏ qua rail đã thử và highway
+
+        for (let x = startX; x <= endX; x++) {
+          if (inventory[`${x},${testRow},${targetLevel}`]) {
+            if (!get().isPathBlocked(x, testRow, targetLevel, shuttleId, inventory)) {
+              targetX = x;
+              actualTargetRow = testRow;
+              console.log(`[OUTBOUND] Found alternative pallet at Rail ${testRow}, Depth ${x}`);
+              get().addLog(`ℹ️ Using Rail ${testRow} instead of ${targetRow} (blocked)`, 'info');
+              break;
+            }
+          }
+        }
+        if (targetX) break;
       }
     }
 
     if (!targetX) {
-      get().addLog(`⚠️ Row ${targetRow} Level ${targetLevel} is empty!`, 'error');
+      get().addLog(`⚠️ No accessible pallets found in zone at level ${targetLevel}!`, 'error');
       return;
     }
 
-    get().addLog(`📤 Outbound: Rail ${targetRow}, Depth ${targetX}, Level ${targetLevel}`, 'start');
+    get().addLog(`📤 Outbound: Rail ${actualTargetRow}, Depth ${targetX}, Level ${targetLevel}`, 'start');
 
     const sequence = [];
     const currentLevel = shuttle.gridPosition.level || 1;
@@ -787,7 +893,7 @@ export const useWarehouseStore = create((set, get) => ({
     const currentY = shuttle.gridPosition.y;
 
     console.log(`[OUTBOUND] Shuttle ${shuttleId} at X=${currentX}, Y=${currentY}, Level=${currentLevel}`);
-    console.log(`[OUTBOUND] Target pallet at X=${targetX}, Y=${targetRow}, Level=${targetLevel}`);
+    console.log(`[OUTBOUND] Target pallet at X=${targetX}, Y=${actualTargetRow}, Level=${targetLevel}`);
 
     // === STAGE 1: LEVEL CHANGE (if needed) ===
     if (currentLevel !== targetLevel) {
@@ -811,12 +917,12 @@ export const useWarehouseStore = create((set, get) => ({
     const fromX = currentLevel !== targetLevel ? liftX : currentX;
     const fromY = currentLevel !== targetLevel ? liftY : currentY;
 
-    console.log(`[OUTBOUND] Navigating from (${fromX}, ${fromY}) to pallet at (${targetX}, ${targetRow})`);
+    console.log(`[OUTBOUND] Navigating from (${fromX}, ${fromY}) to pallet at (${targetX}, ${actualTargetRow})`);
 
     try {
       const palletNavSequence = get().generateEscapeTravelApproach(
         fromX, fromY,
-        targetX, targetRow,
+        targetX, actualTargetRow,
         shuttleId
       );
       sequence.push(...palletNavSequence);
@@ -826,17 +932,17 @@ export const useWarehouseStore = create((set, get) => ({
     }
 
     // === STAGE 3: PICK PALLET ===
-    console.log(`[OUTBOUND] Picking pallet at (${targetX}, ${targetRow}, ${targetLevel})`);
+    console.log(`[OUTBOUND] Picking pallet at (${targetX}, ${actualTargetRow}, ${targetLevel})`);
     sequence.push({ type: 'SHUTTLE_LIFT', lift: true, shuttleId });
     sequence.push({ type: 'WAIT', duration: 500, message: 'Picking pallet...' });
-    sequence.push({ type: 'REMOVE_INVENTORY', x: targetX, y: targetRow, level: targetLevel, shuttleId });
+    sequence.push({ type: 'REMOVE_INVENTORY', x: targetX, y: actualTargetRow, level: targetLevel, shuttleId });
 
     // === STAGE 4: RETURN TO LIFT ===
     console.log(`[OUTBOUND] Returning to lift at (${liftX}, ${liftY})`);
 
     try {
       const returnNavSequence = get().generateEscapeTravelApproach(
-        targetX, targetRow,
+        targetX, actualTargetRow,
         liftX, liftY,
         shuttleId
       );
@@ -932,42 +1038,77 @@ export const useWarehouseStore = create((set, get) => ({
     const shuttle = shuttles[shuttleId];
     const { liftX, liftY, highway } = shuttle;
 
-    // 1. Find Source Pallet (Closest to aisle)
+    // 1. Find Source Pallet (Closest to aisle & Not Blocked)
     let sourceX = null;
+    let actualFromRow = fromRow;
+
+    // Thử tìm ở rail được chỉ định trước
     for (let x = 5; x <= 25; x++) {
       if (inventory[`${x},${fromRow},${fromLevel}`]) {
-        sourceX = x;
-        break;
+        if (!get().isPathBlocked(x, fromRow, fromLevel, shuttleId, inventory)) {
+          sourceX = x;
+          break;
+        } else {
+          console.log(`[TRANSFER] Source pallet at (${x}, ${fromRow}, ${fromLevel}) is blocked by intermediate pallets`);
+        }
+      }
+    }
+
+    // Nếu không tìm thấy ở rail được chỉ định, tự động tìm rail khác trong zone
+    if (!sourceX) {
+      console.log(`[TRANSFER] Rail ${fromRow} has no accessible pallets, searching other rails...`);
+      const { minRail, maxRail } = shuttle;
+
+      for (let testRow = minRail; testRow <= maxRail; testRow++) {
+        if (testRow === fromRow || testRow === highway) continue; // Bỏ qua rail đã thử và highway
+
+        for (let x = 5; x <= 25; x++) {
+          if (inventory[`${x},${testRow},${fromLevel}`]) {
+            if (!get().isPathBlocked(x, testRow, fromLevel, shuttleId, inventory)) {
+              sourceX = x;
+              actualFromRow = testRow;
+              console.log(`[TRANSFER] Found alternative source at Rail ${testRow}, Depth ${x}`);
+              get().addLog(`ℹ️ Using Rail ${testRow} instead of ${fromRow} (blocked)`, 'info');
+              break;
+            }
+          }
+        }
+        if (sourceX) break;
       }
     }
 
     if (!sourceX) {
-      get().addLog(`⚠️ Source ${fromRow}/${fromLevel} is empty!`, 'error');
+      get().addLog(`⚠️ No accessible pallets found in zone at level ${fromLevel}!`, 'error');
       return;
     }
 
-    // 2. Find Destination Slot (Deepest empty)
+    // 2. Find Destination Slot (Deepest empty & Not Blocked)
     let destX = null;
     for (let x = 25; x >= 5; x--) {
       if (!inventory[`${x},${toRow},${toLevel}`]) {
-        destX = x;
-        break;
+        // Kiểm tra xem vị trí này có bị chắn không
+        if (!get().isPathBlocked(x, toRow, toLevel, shuttleId, inventory)) {
+          destX = x;
+          break;
+        } else {
+          console.log(`[TRANSFER] Position (${x}, ${toRow}, ${toLevel}) is blocked by intermediate pallets`);
+        }
       }
     }
 
     if (!destX) {
-      get().addLog(`⚠️ Destination ${toRow}/${toLevel} is full!`, 'error');
+      get().addLog(`⚠️ Destination ${toRow}/${toLevel} is full or all positions blocked!`, 'error');
       return;
     }
 
-    get().addLog(`🔄 Transfer: Rail ${fromRow}/L${fromLevel} → Rail ${toRow}/L${toLevel}`, 'start');
+    get().addLog(`🔄 Transfer: Rail ${actualFromRow}/L${fromLevel} → Rail ${toRow}/L${toLevel}`, 'start');
 
     const sequence = [];
     const currentLevel = shuttle.gridPosition.level || 1;
     const currentX = shuttle.gridPosition.x;
     const currentY = shuttle.gridPosition.y;
 
-    console.log(`[TRANSFER] Source: (${sourceX}, ${fromRow}, ${fromLevel}) → Dest: (${destX}, ${toRow}, ${toLevel})`);
+    console.log(`[TRANSFER] Source: (${sourceX}, ${actualFromRow}, ${fromLevel}) → Dest: (${destX}, ${toRow}, ${toLevel})`);
 
     // === STAGE 1: LEVEL CHANGE TO SOURCE (if needed) ===
     if (currentLevel !== fromLevel) {
@@ -987,12 +1128,12 @@ export const useWarehouseStore = create((set, get) => ({
     const fromX = currentLevel !== fromLevel ? liftX : currentX;
     const fromY = currentLevel !== fromLevel ? liftY : currentY;
 
-    console.log(`[TRANSFER] Navigating to source pallet at (${sourceX}, ${fromRow})`);
+    console.log(`[TRANSFER] Navigating to source pallet at (${sourceX}, ${actualFromRow})`);
 
     try {
       const sourceNavSequence = get().generateEscapeTravelApproach(
         fromX, fromY,
-        sourceX, fromRow,
+        sourceX, actualFromRow,
         shuttleId
       );
       sequence.push(...sourceNavSequence);
@@ -1002,11 +1143,11 @@ export const useWarehouseStore = create((set, get) => ({
     }
 
     // === STAGE 3: PICK PALLET ===
-    console.log(`[TRANSFER] Picking pallet from (${sourceX}, ${fromRow}, ${fromLevel})`);
+    console.log(`[TRANSFER] Picking pallet from (${sourceX}, ${actualFromRow}, ${fromLevel})`);
 
     sequence.push({ type: 'SHUTTLE_LIFT', lift: true, shuttleId });
     sequence.push({ type: 'WAIT', duration: 500, message: 'Picking pallet...' });
-    sequence.push({ type: 'REMOVE_INVENTORY', x: sourceX, y: fromRow, level: fromLevel, shuttleId });
+    sequence.push({ type: 'REMOVE_INVENTORY', x: sourceX, y: actualFromRow, level: fromLevel, shuttleId });
 
     // === STAGE 4: LEVEL CHANGE TO DESTINATION (if needed) ===
     if (fromLevel !== toLevel) {
@@ -1015,7 +1156,7 @@ export const useWarehouseStore = create((set, get) => ({
       // Navigate back to lift with pallet
       try {
         const liftReturnSequence = get().generateEscapeTravelApproach(
-          sourceX, fromRow,
+          sourceX, actualFromRow,
           liftX, liftY,
           shuttleId
         );
